@@ -27,7 +27,9 @@ Extend existing tokenizers with new vocabulary from custom training data. Train 
 
 3- pack your training data using [dataset-packing](https://github.com/U4RASD/dalla-data-processing/blob/main/dalla_data_processing/packing/README.md) this repo packs the training dataset to fit the maximum sequence length you choose 
 
-
+**Sample datasets**
+- [U4RASD/curriculum_books_cpt](https://huggingface.co/datasets/U4RASD/curriculum_books_cpt)
+- [U4RASD/curriculum_books_sft](https://huggingface.co/datasets/U4RASD/curriculum_books_sft)
 ## Installation instructions
 
 To run the code in this project, first, create a Python virtual environment using e.g. `uv`:
