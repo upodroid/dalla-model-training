@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "alignment-handbook"
-version = "0.4.0.dev0"
-description = "The Alignment Handbook"
+name = "dalla"
+version = "0.1.0"
+description = "Dalla AI Model"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10.9"
+requires-python = ">=3.13"
 authors = [
-    { name = "The Hugging Face team (past and future)", email = "lewis@huggingface.co" },
+    { name = "Arab Center"},
 ]
 keywords = ["nlp", "deep learning", "rlhf", "llm"]
 classifiers = [
@@ -21,7 +21,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
@@ -45,21 +45,37 @@ dependencies = [
     "tensorboard",
     "tqdm>=4.64.1",
     "transformers>=4.53.3",
-    "trl>=0.19.1",
+    "trl<=0.19.1",
     "hf-transfer>=0.1.9",
     "wandb",
+    "torch",
     "ray[train]>=2.10.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }
+]
+torchaudio = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }
 ]
 
 [project.optional-dependencies]
 tests = ["pytest", "parameterized>=0.9.0"]
-torch = ["torch>=2.6.0"]
 quality = ["black>=24.4.2", "isort>=5.12.0", "flake8>=6.0.0"]
 docs = ["hf-doc-builder>=0.4.0"]
 dev = ["alignment-handbook[docs,quality,tests]"]
 
 [project.urls]
-Homepage = "https://github.com/huggingface/alignment-handbook"
+Homepage = "https://github.com/arab-center/dalla"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/alignment"]
