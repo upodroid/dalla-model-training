@@ -13,26 +13,15 @@
 # limitations under the License.
 
 """
-Supervised fine-tuning script for decoder language models.
+Supervised fine-tuning script for decoder language models using Ray Train.
 
 Usage:
 
-# One 1 node of 8 x H100s
-accelerate launch --config_file recipes/accelerate_configs/zero3.yaml scripts/sft.py \
-    --model_name_or_path Qwen/Qwen2.5-1.5B-Instruct \
-    --dataset_name trl-lib/Capybara \
-    --learning_rate 2.0e-5 \
-    --num_train_epochs 1 \
-    --packing \
-    --max_seq_length 4096 \
-    --per_device_train_batch_size 2 \
-    --gradient_accumulation_steps 8 \
-    --gradient_checkpointing \
-    --bf16 true \
-    --logging_steps 5 \
-    --eval_strategy steps \
-    --eval_steps 100 \
-    --output_dir data/Qwen2.5-1.5B-SFT
+# Single node with 8 GPUs
+python train.py --config configs/train_recipe/example_recipe.yaml
+
+# Connect to an existing Ray cluster
+python train.py --config configs/train_recipe/example_recipe.yaml --ray_address auto
 """
 
 import logging
@@ -40,7 +29,11 @@ import os
 import sys
 
 import datasets
+import ray
 import transformers
+from ray.train import RunConfig, ScalingConfig
+from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
+from ray.train.torch import TorchTrainer
 from transformers import set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -52,7 +45,11 @@ from utils import get_model_parameters_summary, format_model_parameters_info
 logger = logging.getLogger(__name__)
 
 
-def main(script_args, training_args, model_args):
+def train_func(config):
+    script_args = config["script_args"]
+    training_args = config["training_args"]
+    model_args = config["model_args"]
+
     # Set seed for reproducibility
     set_seed(training_args.seed)
 
@@ -95,12 +92,12 @@ def main(script_args, training_args, model_args):
     ############
     logger.info("*** Loading model ***")
     model = get_model(model_args, training_args)
-    
+
     if script_args.resize_token_embeddings:
         tokenizer_vocab_size = len(tokenizer)
         print(f"Resizing model embeddings to {tokenizer_vocab_size}")
         model.resize_token_embeddings(tokenizer_vocab_size)
-    
+
     if tokenizer.chat_template is None:
         logger.info("No chat template provided, using ChatML.")
         model, tokenizer = setup_chat_format(model, tokenizer, format="chatml")
@@ -122,11 +119,15 @@ def main(script_args, training_args, model_args):
     trainer = SFTTrainer(
         model=model,
         args=training_args,
-        train_dataset=dataset[script_args.dataset_train_split],#.select(range(2000)),#TODO remove,
+        train_dataset=dataset[script_args.dataset_train_split],
         eval_dataset=(dataset[script_args.dataset_test_split] if training_args.eval_strategy != "no" else None),
         processing_class=tokenizer,
         peft_config=get_peft_config(model_args),
     )
+
+    # Add Ray Train reporting callback and prepare for distributed training
+    trainer.add_callback(RayTrainReportCallback())
+    trainer = prepare_trainer(trainer)
 
     ###############
     # Training loop
@@ -148,14 +149,11 @@ def main(script_args, training_args, model_args):
     # Save model and create model card
     ##################################
     logger.info("*** Save model ***")
-    # Align the model's generation config with the tokenizer's eos token
-    # to avoid unbounded generation in the transformers `pipeline()` function
     trainer.model.generation_config.eos_token_id = tokenizer.eos_token_id
     trainer.model.config.eos_token_id = tokenizer.eos_token_id
     trainer.save_model(training_args.output_dir)
     logger.info(f"Model saved to {training_args.output_dir}")
 
-    # Save everything else on main process
     kwargs = {
         "model_name": training_args.hub_model_id if training_args.push_to_hub else None,
         "dataset_name": script_args.dataset_name,
@@ -163,7 +161,6 @@ def main(script_args, training_args, model_args):
     }
     if trainer.accelerator.is_main_process:
         trainer.create_model_card(**kwargs)
-        # Restore k,v cache for fast inference
         trainer.model.config.use_cache = True
         trainer.model.config.save_pretrained(training_args.output_dir)
 
@@ -188,4 +185,25 @@ def main(script_args, training_args, model_args):
 if __name__ == "__main__":
     parser = TrlParser((ScriptArguments, SFTConfig, ModelConfig))
     script_args, training_args, model_args = parser.parse_args_and_config()
-    main(script_args, training_args, model_args)
+
+    ray.init(address=script_args.ray_address)
+
+    ray_trainer = TorchTrainer(
+        train_func,
+        train_loop_config={
+            "script_args": script_args,
+            "training_args": training_args,
+            "model_args": model_args,
+        },
+        scaling_config=ScalingConfig(
+            num_workers=script_args.num_workers,
+            use_gpu=script_args.num_gpus_per_worker > 0,
+            resources_per_worker={"GPU": script_args.num_gpus_per_worker},
+        ),
+        run_config=RunConfig(
+            name="sft-training",
+            storage_path=os.path.abspath(os.path.join(training_args.output_dir, "ray_results")),
+        ),
+    )
+    result = ray_trainer.fit()
+    logger.info(f"Training completed. Results: {result}")

@@ -89,6 +89,13 @@ class ScriptArguments(trl.ScriptArguments):
     tokenizer_name_or_path: Optional[str] = field(default=None)
     is_rbpe_tokenizer: bool = field(default=False)
     resize_token_embeddings: bool = field(default=False)
+    # Ray Train config
+    num_workers: int = field(default=1, metadata={"help": "Number of Ray Train workers."})
+    num_gpus_per_worker: int = field(default=1, metadata={"help": "Number of GPUs per Ray Train worker."})
+    ray_address: Optional[str] = field(
+        default=None, metadata={"help": "Ray cluster address. Use 'auto' to connect to an existing cluster."}
+    )
+
     def __post_init__(self):
         if self.dataset_name is None and self.dataset_mixture is None:
             raise ValueError("Either `dataset_name` or `dataset_mixture` must be provided")
