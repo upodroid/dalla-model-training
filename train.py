@@ -27,6 +27,7 @@ python train.py --config configs/train_recipe/example_recipe.yaml --ray_address 
 import logging
 import os
 import sys
+from pathlib import Path
 
 import datasets
 import ray
@@ -161,7 +162,7 @@ def train_func(config):
     }
     if trainer.accelerator.is_main_process:
         trainer.create_model_card(**kwargs)
-        trainer.model.config.use_cache = True
+        # trainer.model.config.use_cache = True
         trainer.model.config.save_pretrained(training_args.output_dir)
 
     ##########
@@ -186,7 +187,17 @@ if __name__ == "__main__":
     parser = TrlParser((ScriptArguments, SFTConfig, ModelConfig))
     script_args, training_args, model_args = parser.parse_args_and_config()
 
-    ray.init(address=script_args.ray_address)
+    training_args.output_dir = os.path.abspath(training_args.output_dir)
+
+    repo_root = Path(__file__).resolve().parent
+    runtime_env = {
+        "py_modules": [
+            str(repo_root / "src" / "alignment"),
+            str(repo_root / "utils.py"),
+        ]
+    }
+
+    ray.init(address=script_args.ray_address, runtime_env=runtime_env)
 
     ray_trainer = TorchTrainer(
         train_func,
@@ -202,7 +213,7 @@ if __name__ == "__main__":
         ),
         run_config=RunConfig(
             name="sft-training",
-            storage_path=os.path.abspath(os.path.join(training_args.output_dir, "ray_results")),
+            storage_path=os.path.join(training_args.output_dir, "ray_results"),
         ),
     )
     result = ray_trainer.fit()

@@ -12,7 +12,7 @@ attn_implementation: eager
 # Ray Train config
 num_workers: 1
 num_gpus_per_worker: 1
-# ray_address: auto  # uncomment to connect to an existing Ray cluster
+ray_address: auto  # uncomment to connect to an existing Ray cluster
 
 # Data training arguments
 # uncomment this to force a chat template
@@ -56,7 +56,7 @@ push_to_hub: false
 remove_unused_columns: true
 report_to:
   - tensorboard
-  - wandb
+  # - wandb
 save_strategy: "no"
 seed: 42
 warmup_ratio: 0.1
