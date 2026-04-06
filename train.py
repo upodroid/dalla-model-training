@@ -34,7 +34,7 @@ import ray
 import transformers
 from ray.train import RunConfig, ScalingConfig
 from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
-from ray.train.torch import TorchTrainer
+from ray.train.torch import TorchConfig, TorchTrainer
 from transformers import set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 _MULTIMODAL_PREFIXES = (
     "model.vision_tower",
     "model.multi_modal_projector",
+    "model.soft_emb_norm",
 )
 
 
@@ -231,6 +232,7 @@ if __name__ == "__main__":
 
     ray_trainer = TorchTrainer(
         train_func,
+        torch_config=TorchConfig(ddp_find_unused_parameters=True),
         train_loop_config={
             "script_args": script_args,
             "training_args": training_args,
