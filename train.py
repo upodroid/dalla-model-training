@@ -45,6 +45,26 @@ from utils import get_model_parameters_summary, format_model_parameters_info
 
 logger = logging.getLogger(__name__)
 
+# Multimodal parameter prefixes that are never used in text-only training.
+# Freezing them prevents DDP from failing on un-reduced gradients.
+# In Gemma 3 the projector / soft-emb-norm live under `model.*`.
+_MULTIMODAL_PREFIXES = (
+    "model.vision_tower",
+    "model.multi_modal_projector",
+)
+
+
+def _freeze_multimodal_params(model):
+    """Freeze multimodal branches that are unused during text-only SFT."""
+    frozen = 0
+    for name, param in model.named_parameters():
+        if name.startswith(_MULTIMODAL_PREFIXES):
+            param.requires_grad = False
+            frozen += param.numel()
+    if frozen:
+        logger.info("Froze %s multimodal parameters (vision_tower / projector / soft_emb_norm).", f"{frozen:,}")
+    return model
+
 
 def train_func(config):
     script_args = config["script_args"]
@@ -93,6 +113,9 @@ def train_func(config):
     ############
     logger.info("*** Loading model ***")
     model = get_model(model_args, training_args)
+
+    # Freeze multimodal params so DDP does not choke on unused gradients
+    model = _freeze_multimodal_params(model)
 
     if script_args.resize_token_embeddings:
         tokenizer_vocab_size = len(tokenizer)
@@ -188,6 +211,13 @@ if __name__ == "__main__":
     script_args, training_args, model_args = parser.parse_args_and_config()
 
     training_args.output_dir = os.path.abspath(training_args.output_dir)
+
+    # Multi-node DDP settings
+    if script_args.num_workers > 1:
+        if training_args.ddp_find_unused_parameters is None:
+            training_args.ddp_find_unused_parameters = True
+        if not training_args.ddp_backend:
+            training_args.ddp_backend = "nccl"
 
     repo_root = Path(__file__).resolve().parent
     runtime_env = {
